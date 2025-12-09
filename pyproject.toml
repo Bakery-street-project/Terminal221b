@@ -1,0 +1,98 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "terminal221b"
+version = "0.1.0"
+description = "Polymathic Autonomous Organization (PAO) - A sovereign, self-funding AI civilization engine"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Kiliaan Vanvoorden", email = "kiliaan@bakerstreetproject221B.store" }
+]
+keywords = [
+    "ai",
+    "autonomous-agents",
+    "multi-agent-systems",
+    "solana",
+    "blockchain",
+    "terminal-ui",
+    "local-llm"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "textual>=0.40.0",
+    "rich>=13.0.0",
+    "click>=8.0.0",
+    "pydantic>=2.0.0",
+    "tiktoken>=0.5.0",
+    "httpx>=0.25.0",
+    "toml>=0.10.0",
+]
+
+[project.optional-dependencies]
+openai = ["openai>=1.0.0"]
+anthropic = ["anthropic>=0.7.0"]
+solana = ["solana>=0.30.0", "anchorpy>=0.18.0"]
+local = ["tensorrt-llm>=0.5.0"]
+all = [
+    "openai>=1.0.0",
+    "anthropic>=0.7.0",
+    "solana>=0.30.0",
+    "anchorpy>=0.18.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "pyinstaller>=6.0.0",
+]
+
+[project.urls]
+Homepage = "https://bakerstreetproject221B.store"
+Documentation = "https://github.com/Bakery-street-project/Terminal221b#readme"
+Repository = "https://github.com/Bakery-street-project/Terminal221b"
+Issues = "https://github.com/Bakery-street-project/Terminal221b/issues"
+
+[project.scripts]
+terminal221b = "src.main:main"
+t221b = "src.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src", "utils"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=src --cov=utils --cov-report=term-missing"
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

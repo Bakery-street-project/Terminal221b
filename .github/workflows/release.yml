@@ -1,0 +1,215 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          # Linux builds
+          - os: linux
+            arch: amd64
+            runner: ubuntu-latest
+            python: '3.11'
+          - os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            python: '3.11'
+          # macOS builds
+          - os: darwin
+            arch: amd64
+            runner: macos-latest
+            python: '3.11'
+          - os: darwin
+            arch: arm64
+            runner: macos-14
+            python: '3.11'
+          # Windows builds
+          - os: windows
+            arch: amd64
+            runner: windows-latest
+            python: '3.11'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build binary (Unix)
+        if: matrix.os != 'windows'
+        run: |
+          pyinstaller --onefile \
+            --name terminal221b-${{ matrix.os }}-${{ matrix.arch }} \
+            --add-data "src:src" \
+            --hidden-import=tiktoken_ext.openai_public \
+            --hidden-import=tiktoken_ext \
+            src/main.py
+
+      - name: Build binary (Windows)
+        if: matrix.os == 'windows'
+        run: |
+          pyinstaller --onefile `
+            --name terminal221b-${{ matrix.os }}-${{ matrix.arch }}.exe `
+            --add-data "src;src" `
+            --hidden-import=tiktoken_ext.openai_public `
+            --hidden-import=tiktoken_ext `
+            src/main.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminal221b-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/terminal221b-*
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          find . -type f -name "terminal221b-*" | while read file; do
+            sha256sum "$file" >> ../checksums.txt
+          done
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Terminal221b ${{ steps.version.outputs.version }}
+          body: |
+            ## Terminal221b ${{ steps.version.outputs.version }}
+            
+            **Polymathic Autonomous Organization (PAO)**
+            
+            A sovereign, self-funding AI civilization engine with:
+            - Multi-agent collaboration (Analyst, Artist, Engineer, Writer)
+            - Terminal UI (Textual/Rich)
+            - Solana blockchain integration
+            - Local inference via TensorRT-LLM
+            
+            ### Downloads
+            
+            | Platform | Architecture | File |
+            |----------|--------------|------|
+            | Linux | AMD64 | terminal221b-linux-amd64 |
+            | Linux | ARM64 | terminal221b-linux-arm64 |
+            | macOS | AMD64 | terminal221b-darwin-amd64 |
+            | macOS | ARM64 | terminal221b-darwin-arm64 |
+            | Windows | AMD64 | terminal221b-windows-amd64.exe |
+            
+            ### License Tiers
+            
+            | Tier | Runs/Day | Agents | Blockchain |
+            |------|----------|--------|------------|
+            | Free | 5 | 1 | ❌ |
+            | Pro ($9/mo) | 100 | 3 | ✅ |
+            | Enterprise | Unlimited | Unlimited | ✅ |
+            
+            **Purchase License:** https://bakerstreetproject221B.store/terminal221b
+            
+            ### Checksums (SHA256)
+            ```
+            $(cat ../checksums.txt)
+            ```
+          files: |
+            artifacts/**/*
+            checksums.txt
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  container:
+    name: Build Container Image (Podman)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman qemu-user-static
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+
+      - name: Build multi-arch image
+        run: |
+          podman manifest create terminal221b-manifest
+          
+          # Build AMD64
+          podman build --platform linux/amd64 \
+            -f Containerfile \
+            -t ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}-amd64 .
+          podman manifest add terminal221b-manifest \
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}-amd64
+          
+          # Build ARM64
+          podman build --platform linux/arm64 \
+            -f Containerfile \
+            -t ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}-arm64 .
+          podman manifest add terminal221b-manifest \
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}-arm64
+
+      - name: Push to GHCR
+        run: |
+          podman manifest push terminal221b-manifest \
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+          podman manifest push terminal221b-manifest \
+            ghcr.io/${{ github.repository }}:latest
